@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<watchdog xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="watchdog.xsd" watchdogBase="/home/st/strobld/watchdog2/">
+
+	<settings>
+		<constants>
+			<const name="BASE">/home/st/strobld/relB</const>
+			<const name="TEMP">/big/st/strobld/relB</const>
+		</constants>
+		<environments>
+			<environment name="standard" copyLocalValue="true">
+
+			</environment>
+		</environments>
+		<modules>
+			<folder>daniel_modules/</folder>
+			<folder>sophie_modules/</folder>
+		</modules>
+		<processBlock>
+			<baseFolder folder="${BASE}/">
+				<processFolder name="trimmed" folder="trimmed/" pattern="*.fq"/>
+			</baseFolder>
+			
+			<baseFolder folder="${TEMP}/">
+				<processFolder name="filtered" folder="filtered/" pattern="*.fastq" disableExistenceCheck="true"/>
+				<processFolder name="mapped" folder="mapped/" pattern="*.sam" disableExistenceCheck="true"/>
+			</baseFolder>
+			<processInput name="input" />
+		</processBlock>
+		<executors>
+			<cluster name="cluster" memory="57000M" queue="hpclient.q" environment="standard" maxRunning="17"/>
+			<cluster name="clusterLowMem" memory="15G" queue="hpclient.q" environment="standard"/>
+			<local name="localhost" maxRunning="1" default="true" workingDir="${TMP}"/>
+			<remote name="workstations" host="boole;stifel;cauchy;watson" user="strobld" privateKey="/home/st/strobld/.ssh/ifi_rsa" port="24" maxRunning="1" disableStrictHostCheck="true" workingDir="${TMP}" environment="standard"/>
+		</executors>
+	</settings>
+
+	<tasks mail="daniel.strobl@tum.de">
+		<rrnaFilterDTask id="1" name="rRNA filter" executor="workstations" processBlock="trimmed">
+			<parameter>
+				<in1>{}</in1>
+				<rrnaIndex>/mnt/biostor1/Data/Databases/GENOMES/Mus/GRCm38/indices/bwa/chrRDNA.fa</rrnaIndex>
+				<out1>${TEMP}/filtered/[1].filtered.fastq</out1>
+				<sam>${TEMP}/filtered/[1].rRNA.sam</sam>
+				<workdir>/usr/local/storage/</workdir>
+				<seedSize>25</seedSize>
+				<threads>8</threads>
+				<maxEditDistance>0</maxEditDistance>
+			</parameter>
+			<streams>
+				<stdout>${TEMP}/filtered/[1].filtering.out</stdout>
+				<stderr>${TEMP}/filtered/[1].filtering.err</stderr>
+			</streams>
+		</rrnaFilterDTask>
+
+		<HISAT2Task id="2" name="mapping" executor="workstations" processBlock="filtered">
+			<parameter>
+				<unpaired>{}</unpaired>
+				<index>/big/st/strobld/mm10/genome</index>
+				<output>${TEMP}/mapped/[1].sam</output>
+			</parameter>
+			
+			<streams>
+				<stdout>${TEMP}/mapped/[1].out</stdout>
+				<stderr>${TEMP}/mapped/[1].err</stderr>
+			</streams>
+
+		</HISAT2Task>
+
+		<featureCountsTask id="3" name="fc" processBlock="mapped" executor="workstations">
+			<dependencies>
+				<depends>2</depends>
+			</dependencies>
+			<parameter>
+				<annotation>/mnt/raidproj/biostor1/Data/unmodified/GENOMES/Mus/GRCm38/annotation/ENSEMBLv89/Mus_musculus.GRCm38.89.chr.gtf</annotation>
+				<input>{}</input>
+				<output>${BASE}/counts/[2].counts</output>
+				<stranded>1</stranded>
+				<threads>8</threads>
+				<minOverlap>25</minOverlap>
+			        <primary>true</primary>
+			</parameter>
+		</featureCountsTask>
+
+		<mergeFeatureCountsTask id="4" name="mergeFC" executor="localhost">
+			<dependencies>
+				<depends>3</depends>
+			</dependencies>
+			<parameter>
+				<searchFolder>${BASE}/counts/</searchFolder>
+				<output>${BASE}/counts/merged.counts</output>
+				<featureAnnotationID>Geneid</featureAnnotationID>
+				<featureAnnotation>/home/proj/tmp/strobl/ENSEMBLv89/geneType.txt</featureAnnotation>
+			</parameter>
+		</mergeFeatureCountsTask>
+
+
+
+	</tasks>
+</watchdog>
